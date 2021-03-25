@@ -1,10 +1,12 @@
 ;;; forge-org.el --- Create org file for integrating scheduling with issues managed with forge.
 
-;; Author: jkamins7
-;; Keywords: forge, org, scheduling
-;; Package-Requirements: ((forge) (org))
-;; Package-Version: 0.1.0
-
+;; Author: jkamins7 <jkaminsky at jhu dot edu>
+;; Maintainer: jkamins7 <jkaminsky at jhu dot edu>
+;; Created: 2021-03-24
+;; Keywords: org, synchronization, issue tracking, forge
+;; Homepage: https://github.com/jkamins7/todolist
+;; Package-Requires: ((cl-lib "0.5") (org "8.2") (emacs "24") (forge "0.1"))
+;; Version: 0.3.0
 ;; This file is not part of gnu emacs
 
 ;;; package --- Summary
