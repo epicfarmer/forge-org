@@ -3,6 +3,7 @@
 ;; Author jkamins7
 ;; Keywords forge, org, scheduling
 ;; Package-Requirements ((forge) (org))
+;; Version 0.1.0
 
 ;; This file is not part of gnu emacs
 
