@@ -1,3 +1,11 @@
+;;; forge-org.el --- Create org file for integrating scheduling with issues managed with forge.
+
+;; Author jkamins7
+;; Keywords forge, org, scheduling
+;; Package-Requirements ((forge) (org))
+
+;; This file is not part of gnu emacs
+
 ;;; package --- Summary
 ;; forge-org is a package for using org-mode as to integrate forge tasks with an org mode scheduling interface
 ;;; Commentary:
@@ -287,8 +295,9 @@
     (mapcar 'diff-and-update-issue (org-to-issue-list filename))
     (sql-to-org (issue-forge-query (list
 				    '"assignee.login == '\"jkamins7\"'"
-				    ;"((NOT (issue.state == '\"closed\"')) OR (issue.updated > date('now', '-15 days')))")))
-				    "(date(substr(issue.updated,2,11)) > date('now', '-30 days'))")))
+				    "((NOT (issue.state == 'closed'))"
+				    "(issue.updated > date('now', '-15 days')))")))
+				    ;"(date(substr(issue.updated,2,11)) > date('now', '-30 days'))")))
     )
   )
 
@@ -370,3 +379,4 @@
 (forge-create-scheduling-table)
 
 (provide 'forge-org)
+;;; forge-org.el ends here
