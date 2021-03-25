@@ -98,7 +98,7 @@
 	 '")"
 	 )
       nil)
-    ") ORDER BY rid, iid, sid"
+    ") ORDER BY rid, imi, iid, sid"
     )
    )
   )
@@ -124,26 +124,26 @@
         (insert '"  :END:")
         (newline 1)
         (setq current-repository (nth 0 sql-result))
+	(setq current-milestone-name '"")
         't
 	)
       )
 
-;; Problem with milestones
-;    (if (or (not (nth 4 sql-result)) (string= current-milestone (nth 4 sql-result)))
-;	nil
-;      (progn
-;        (find-file org-file-name)
-;        (insert '"** ")
-;        (insert (nth 4 sql-result))
-;        (newline 1)
-;        (insert '"   :PROPERTIES:")
-;        (newline 1)
-;        (insert '"   :END:")
-;        (newline 1)
-;        (setq current-milestone (nth 4 sql-result))
-;        't
-;	)
-;      )
+    (if (nth 4 sql-result) (setq current-milestone-name (nth 4 sql-result)) (setq current-milestone-name '"No Milestone"))
+    (if (not (string= current-milestone current-milestone-name))
+      (progn
+        (find-file org-file-name)
+        (insert '"** ")
+        (insert current-milestone-name)
+        (newline 1)
+        (insert '"   :PROPERTIES:")
+        (newline 1)
+        (insert '"   :END:")
+        (newline 1)
+        (setq current-milestone current-milestone-name)
+        't
+	)
+      )
 
     (progn
       (find-file org-file-name)
@@ -181,7 +181,6 @@
 	    (newline 1))
       (if (and (nth 14 sql-result) (not (string= (nth 14 sql-result) '"")))
 	  (progn
-	    ;(insert "    CLOCK:")
 	    (insert (nth 14 sql-result))
 	    (newline 1)
 	    )
@@ -194,7 +193,6 @@
       (write-property '"assignee-name" (nth 10 sql-result) '"    ")
       (write-property '"assignee-id" (nth 8 sql-result) '"    ")
       (write-property '"schedule-id" (nth 11 sql-result) '"    ")
-      ;(write-property '(nth 5 sql-result))
       (insert '"    :END:")
       (newline 1)
       )
