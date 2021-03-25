@@ -205,6 +205,8 @@
   "Convert an entire sql query into org mode text.  \"SQL-RESULTS\" is the sql result to convert."
   (progn
     (setq sql-results sql-results)
+    (setq current-repository nil)
+    (setq current-milestone nil)
     (find-file org-file-name)
     (erase-buffer)
     (insert '"# Issue tracking for use with forge")
@@ -298,9 +300,8 @@
     (mapcar 'diff-and-update-issue (org-to-issue-list filename))
     (sql-to-org (issue-forge-query (list
 				    '"assignee.login == '\"jkamins7\"'"
-				    "((NOT (issue.state == 'closed'))"
-				    "(issue.updated > date('now', '-15 days')))")))
-				    ;"(date(substr(issue.updated,2,11)) > date('now', '-30 days'))")))
+				    "(NOT (issue.state == 'closed'))"
+				    )))
     )
   )
 
