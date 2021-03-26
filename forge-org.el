@@ -387,9 +387,9 @@
     (sit-for 1)
     ))
 
-(defun forge-org-create-bug (.title .body .labels .assignees .state url)
-  "Create an issue for a forge named URL from a .TITLE .BODY .LABELS .ASSIGNEES and .STATE ."
-  (forge--ghub-post (forge-get-repository (forge-org-parse-url url)) "/repos/:owner/:repo/issues"
+(defun forge-org-create-bug (.title .body .labels .assignees .state .host .owner .repo)
+  "Create an issue for a forge defined by .HOST .OWNER and .REPO from a .TITLE .BODY .LABELS .ASSIGNEES and .STATE ."
+  (forge--ghub-post (forge-get-repository (list .host .owner .repo)) "/repos/:owner/:repo/issues"
     `((title . , .title)
       (body  . , .body)
       ,@(and .labels    (list (cons 'labels    .labels)))
@@ -405,7 +405,6 @@
   (let* ((topic (forge-get-topic topic-id))
 	 (repo (forge-get-repository topic))
 	 )
-    (debug)
     (forge--set-topic-state repo topic)
     ))
 
