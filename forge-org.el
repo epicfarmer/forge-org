@@ -19,8 +19,12 @@
 
 (defvar org-file-name)
 (setq org-file-name '"~/Dropbox/forge.org")
+
+;; This seems like poor emacs style
 (defvar  current-repository '"")
 (defvar current-milestone '"")
+(defvar current-milestone-name '"")
+
 (defun write-property (name value indentation)
   "Write an \"org-mode\" property for a list item at indent level \"INDENTATION\" called \"NAME\" with value \"VALUE\"."
   (if value
@@ -36,7 +40,7 @@
 	      nil)))
 	(newline 1)
 	)
-      )
+    )
   )
 
 (defun issue-forge-query (filters)
@@ -124,25 +128,25 @@
         (insert '"  :END:")
         (newline 1)
         (setq current-repository (nth 0 sql-result))
-	(setq current-milestone-name '"")
+	(setq current-milestone '"")
         't
 	)
       )
 
     (if (nth 4 sql-result) (setq current-milestone-name (nth 4 sql-result)) (setq current-milestone-name '"No Milestone"))
     (if (not (string= current-milestone current-milestone-name))
-      (progn
-        (find-file org-file-name)
-        (insert '"** ")
-        (insert current-milestone-name)
-        (newline 1)
-        (insert '"   :PROPERTIES:")
-        (newline 1)
-        (insert '"   :END:")
-        (newline 1)
-        (setq current-milestone current-milestone-name)
-        't
-	)
+	(progn
+	  (find-file org-file-name)
+	  (insert '"** ")
+	  (insert current-milestone-name)
+	  (newline 1)
+	  (insert '"   :PROPERTIES:")
+	  (newline 1)
+	  (insert '"   :END:")
+	  (newline 1)
+	  (setq current-milestone current-milestone-name)
+	  't
+	  )
       )
 
     (progn
@@ -178,7 +182,7 @@
       (if (or
 	   (and (nth 12 sql-result) (not (string= (nth 12 sql-result) '"")))
 	   (and (nth 13 sql-result) (not (string= (nth 13 sql-result) '""))))
-	    (newline 1))
+	  (newline 1))
       (if (and (nth 14 sql-result) (not (string= (nth 14 sql-result) '"")))
 	  (progn
 	    (insert (nth 14 sql-result))
@@ -252,45 +256,50 @@
 	)
      nil)
    )
-)
+  )
 
 (defun search-within-issue (issue-min issue-max regex)
   "Search for text within the body of an \"org-mode\" issue.  Start at ISSUE-MIN, go to ISSUE-MAX, find the first thing matching REGEX.  There is nothing about this function that is particular to issues."
-  (progn
-    (goto-char issue-min)
-    (setq rc '"")
-    (while (re-search-forward regex issue-max t);Get it's id
+  (let* ((rc '""))
+    (progn
+      (goto-char issue-min)
+      (setq rc '"")
+      (while (re-search-forward regex issue-max t);Get it's id
 	(setq rc (concat rc (if (not (string= rc '"")) '"\n" '"") (match-string 1)))
 	nil)
-    rc))
+      rc))
+  )
 
 (defun org-to-issue-list (filename)
+  "Read through an org file FILENAME, and create a list of issues."
+  (let* ((issues-list (list))
+	 (issue-min (point-max))
+	 (issue-max (point-max))
+	 (this-id)
+	 (this-schedule-id)
+	 (this-schedule)
+	 (this-deadline)
+	 (this-clock)
+	 (this-priority)
+	 (this-issue))
   (progn
     (find-file filename)
     (goto-char (point-max))
-    (setq issues-list (list))
-    (setq issue-max (point-max))
-    (setq issue-min (point-max))
     (while (re-search-backward '"^[*][*][*] " (point-min) t)    ;Find next issue
-      (progn
-	;; Set bounds for issue
-	(setq issue-max issue-min)
-	(setq issue-min (point))
-	;; Construct this issue
-	(setq this-id (search-within-issue issue-min issue-max '":issue-id: \\(.*\\)$"));Get it's id
-	(setq this-schedule-id (search-within-issue issue-min issue-max '":schedule-id: \\(.*\\)$" ));Get it's iD
-	(setq this-schedule (search-within-issue issue-min issue-max '"SCHEDULED: <\\([^>]*\\)>" ));Get it's id
-	(setq this-deadline (search-within-issue issue-min issue-max '"DEADLINE: <\\([^>]*\\)>" ));Get it's id
-	(setq this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ));Get it's id
-	(setq this-priority (search-within-issue issue-min issue-max '"^[*]* [TOD][OPO][DEN][ONE] \\[#\\(.*\\)\\]" ));Get it's priority
-	(setq this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority))
-	;; Issue construction complete
+      (let*
+	  ((this-id (search-within-issue issue-min issue-max '":issue-id: \\(.*\\)$"))
+	   (this-schedule-id (search-within-issue issue-min issue-max '":schedule-id: \\(.*\\)$" ));Get it's iD
+	   (this-schedule (search-within-issue issue-min issue-max '"SCHEDULED: <\\([^>]*\\)>" ));Get it's id
+	   (this-deadline (search-within-issue issue-min issue-max '"DEADLINE: <\\([^>]*\\)>" ));Get it's id
+	   (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ));Get it's id
+	   (this-priority (search-within-issue issue-min issue-max '"^[*]* [TOD][OPO][DEN][ONE] \\[#\\(.*\\)\\]" ));Get it's priority
+	   (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority))); Construct issue
 	(setq issues-list (cons this-issue issues-list))
 	(goto-char issue-min)
 	))
     (save-buffer)
     (kill-buffer)
-    issues-list)
+    issues-list))
   )
 
 (defun diff-issue-list-with-database (filename)
@@ -329,7 +338,7 @@
 
 (defun forge-destroy-scheduling-table ()
   (forge-sql '"DROP TABLE issue_schedule"
-  ))
+	     ))
 
 (defun forge-create-scheduling-table ()
   (forge-sql '"CREATE TABLE IF NOT EXISTS issue_schedule (
@@ -355,29 +364,56 @@
     (save-buffer)))
 
 (defun forge-org-jump-to-forge () (interactive)
-  (progn
-    (setq tmp (concat '"^" (org-entry-get nil '"repository" t) '" "))
-    (magit-list-repositories)
-    (switch-to-buffer (other-buffer (current-buffer) t))
-    (goto-char (point-min))
-    (re-search-forward tmp (point-max) t)    ;Find next issue
-    (magit-repolist-status)
-    (switch-to-buffer (other-buffer (current-buffer) t))
-    (kill-buffer)
-  )
-)
-
-(defun forge-org-reset-database () (interactive)
        (progn
-	 (forge-destroy-scheduling-table)
-	 (forge-create-scheduling-table)
-	 ))
+	 (setq tmp (concat '"^" (org-entry-get nil '"repository" t) '" "))
+	 (magit-list-repositories)
+	 (switch-to-buffer (other-buffer (current-buffer) t))
+	 (goto-char (point-min))
+	 (re-search-forward tmp (point-max) t)    ;Find next issue
+	 (magit-repolist-status)
+	 (switch-to-buffer (other-buffer (current-buffer) t))
+	 (kill-buffer)
+	 )
+       )
 
-(defun forge-org-reset-org () (interactive)
-       (delete-file org-file-name)
-)
-;(defvar tmp2)
-;(setq tmp2 (sql-to-org tmp))
+(defun forge-org-get-all-repositories-in-database ()
+  (mapcar (lambda (repo) (forge-get-repository repo)) (forge-sql "select distinct forge,owner,name from repository")))
+
+(defun forge-org-pull-all-forges ()
+  (interactive)
+  (dolist (repo (forge-org-get-all-repositories-in-database))
+    (forge-pull repo)
+    (sit-for 1)
+    ))
+
+(defun forge-org-create-bug (.title .body .labels .assignees .state url)
+  "Create an issue for a forge named URL from a .TITLE .BODY .LABELS .ASSIGNEES and .STATE ."
+  (forge--ghub-post (forge-get-repository (forge-org-parse-url url)) "/repos/:owner/:repo/issues"
+    `((title . , .title)
+      (body  . , .body)
+      ,@(and .labels    (list (cons 'labels    .labels)))
+      ,@(and .assignees    (list (cons 'assignees    .assignees)))
+      )
+    ;; :callback  (forge--post-submit-callback)
+    :errorback (forge--post-submit-errorback)
+    )
+  )
+
+(defun forge-org-reset-database ()
+  "Reset forge-org's additions to a forge sqlite database."
+  (interactive)
+  (progn
+    (forge-destroy-scheduling-table)
+    (forge-create-scheduling-table)
+    )
+  )
+
+(defun forge-org-reset-org ()
+  "Delete the org file forge-org is using."
+  (interactive)
+  (delete-file org-file-name)
+  )
+
 (forge-create-scheduling-table)
 
 (provide 'forge-org)
