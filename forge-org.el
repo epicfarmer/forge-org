@@ -206,7 +206,6 @@
 (defun sql-to-org (sql-results)
   "Convert an entire sql query into org mode text.  \"SQL-RESULTS\" is the sql result to convert."
   (progn
-    (setq sql-results sql-results)
     (setq current-repository nil)
     (setq current-milestone nil)
     (find-file org-file-name)
@@ -219,7 +218,7 @@
     (newline 1)
     (insert '"#+PRIORITIES: A E C")
     (newline 1)
-    (mapcar 'issue-to-org sql-results)
+    (mapc 'issue-to-org sql-results)
     )
   )
 
@@ -286,17 +285,22 @@
     (find-file filename)
     (goto-char (point-max))
     (while (re-search-backward '"^[*][*][*] " (point-min) t)    ;Find next issue
-      (let*
-	  ((this-id (search-within-issue issue-min issue-max '":issue-id: \\(.*\\)$"))
-	   (this-schedule-id (search-within-issue issue-min issue-max '":schedule-id: \\(.*\\)$" ));Get it's iD
-	   (this-schedule (search-within-issue issue-min issue-max '"SCHEDULED: <\\([^>]*\\)>" ));Get it's id
-	   (this-deadline (search-within-issue issue-min issue-max '"DEADLINE: <\\([^>]*\\)>" ));Get it's id
-	   (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ));Get it's id
-	   (this-priority (search-within-issue issue-min issue-max '"^[*]* [TOD][OPO][DEN][ONE] \\[#\\(.*\\)\\]" ));Get it's priority
-	   (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority))); Construct issue
-	(setq issues-list (cons this-issue issues-list))
-	(goto-char issue-min)
-	))
+      (progn
+	;; Set bounds for issue
+	(setq issue-max issue-min)
+	(setq issue-min (point))
+	(let*
+	    ((this-id (search-within-issue issue-min issue-max '":issue-id: \\(.*\\)$"))
+	     (this-schedule-id (search-within-issue issue-min issue-max '":schedule-id: \\(.*\\)$" ));Get it's iD
+	     (this-schedule (search-within-issue issue-min issue-max '"SCHEDULED: <\\([^>]*\\)>" ));Get it's id
+	     (this-deadline (search-within-issue issue-min issue-max '"DEADLINE: <\\([^>]*\\)>" ));Get it's id
+	     (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ));Get it's id
+	     (this-priority (search-within-issue issue-min issue-max '"^[*]* [TOD][OPO][DEN][ONE] \\[#\\(.*\\)\\]" ));Get it's priority
+	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority))); Construct issue
+	  ;; Create issue
+	  (setq issues-list (cons this-issue issues-list))
+	  (goto-char issue-min)
+	  )))
     (save-buffer)
     (kill-buffer)
     issues-list))
@@ -380,10 +384,10 @@
 (defun forge-org-get-all-repositories-in-database ()
   (mapcar (lambda (repo) (forge-get-repository repo)) (forge-sql "select distinct forge,owner,name from repository")))
 
-(defun forge-org-pull-all-forges ()
+(defun forge-org-pull-all-forges (&optional until)
   (interactive)
   (dolist (repo (forge-org-get-all-repositories-in-database))
-    (forge-pull repo)
+    (forge--pull repo until)
     (sit-for 1)
     ))
 
@@ -396,7 +400,7 @@
       ,@(and .assignees    (list (cons 'assignees    .assignees)))
       )
     ;; :callback  (forge--post-submit-callback)
-    :errorback (forge--post-submit-errorback)
+    :errorback (progn (debug) (forge--post-submit-errorback))
     )
   )
 
@@ -419,7 +423,6 @@
   (let* ((issue-id (org-entry-get nil '"ISSUE-ID")))
     (forge-org-edit-topic-state-by-id issue-id)
     ))
-
 
 (defun forge-org-reset-database ()
   "Reset forge-org's additions to a forge sqlite database."
