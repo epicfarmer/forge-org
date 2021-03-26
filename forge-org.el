@@ -405,7 +405,12 @@
   (let* ((topic (forge-get-topic topic-id))
 	 (repo (forge-get-repository topic))
 	 )
-    (forge--set-topic-state repo topic)
+    (forge--ghub-patch topic
+      "/repos/:owner/:repo/issues/:number"
+      `((state . ,(cl-ecase (oref topic state)
+		    (closed "OPEN")
+		    (open   "CLOSED"))))
+      )
     ))
 
 (defun forge-org-edit-topic-state ()
