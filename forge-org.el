@@ -360,6 +360,7 @@
     ()
   (interactive)
   (progn
+    (forge-org-pull-all-forges)
     (diff-issue-list-with-database org-file-name)
     (save-buffer)))
 
@@ -398,6 +399,23 @@
     :errorback (forge--post-submit-errorback)
     )
   )
+
+(defun forge-org-edit-topic-state-by-id (topic-id)
+  "Change the state of a topic by TOPIC-ID."
+  (let* ((topic (forge-get-topic topic-id))
+	 (repo (forge-get-repository topic))
+	 )
+    (debug)
+    (forge--set-topic-state repo topic)
+    ))
+
+(defun forge-org-edit-topic-state ()
+  "Close or open a topic at point."
+  (interactive)
+  (let* ((issue-id (org-entry-get nil '"ISSUE-ID")))
+    (forge-org-edit-topic-state-by-id issue-id)
+    ))
+
 
 (defun forge-org-reset-database ()
   "Reset forge-org's additions to a forge sqlite database."
