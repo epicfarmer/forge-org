@@ -403,7 +403,7 @@
       ,@(and .assignees    (list (cons 'assignees    .assignees)))
       )
     ;; :callback  (forge--post-submit-callback)
-    :errorback (progn (debug) (forge--post-submit-errorback))
+    :errorback (forge--post-submit-errorback)
     )
   )
 
