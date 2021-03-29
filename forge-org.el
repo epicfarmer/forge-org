@@ -387,13 +387,16 @@
 (defun forge-org-pull-all-forges (&optional until)
   (interactive)
   (dolist (repo (forge-org-get-all-repositories-in-database))
+    ;; This call is not ideal, since it gives an error, but it works so leaving in for now.
+    ;; The issue is a problem with forge, where it doesn't appropriately pass the repo to the callback
     (forge--pull repo until)
     (sit-for 1)
     ))
 
-(defun forge-org-create-bug (.title .body .labels .assignees .state .host .owner .repo)
+(defun forge-org-create-bug (.title .body .labels .assignees .state .forge .owner .repo)
   "Create an issue for a forge defined by .HOST .OWNER and .REPO from a .TITLE .BODY .LABELS .ASSIGNEES and .STATE ."
-  (forge--ghub-post (forge-get-repository (list .host .owner .repo)) "/repos/:owner/:repo/issues"
+  ;; This is a ghub call because normal forge calls fail to recognize the repo in the callbacks
+  (forge--ghub-post (forge-get-repository (list .forge .owner .repo)) "/repos/:owner/:repo/issues"
     `((title . , .title)
       (body  . , .body)
       ,@(and .labels    (list (cons 'labels    .labels)))
@@ -401,6 +404,25 @@
       )
     ;; :callback  (forge--post-submit-callback)
     :errorback (progn (debug) (forge--post-submit-errorback))
+    )
+  )
+
+(defun forge-org-add-bug-to-forge ()
+  "Create a bug and add to the forge from the currently selected TODO item."
+  (interactive)
+  (let* ((forge (org-entry-get nil '"forge" t))
+	 (owner (org-entry-get nil '"owner" t))
+	 (repo (org-entry-get nil '"repository" t))
+	 (issue-id (org-entry-get nil '"issue-id"))
+	 (title (org-entry-get nil '"ITEM"))
+	 (assignees (org-entry-get nil '"assignee"))
+	 (labels (org-entry-get nil '"label"))
+	 (state (if (equal (org-entry-get nil '"TODO") "TODO") 'open 'closed))
+	 )
+    (if (null issue-id)
+	(forge-org-create-bug title '"" labels assignees state forge owner repo)
+      (message '"This issue already has an issue id, so we will not add it to the forge")
+      )
     )
   )
 
