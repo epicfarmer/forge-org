@@ -30,7 +30,7 @@
   "A list of string filters to determine which issues to pull from the forge databse.  Issues that satisfy all filters will be returned.  This is passed raw to the forge-sqlite."
   :package-version '(forge . "0.3.0")
   :group 'forge-org
-  :type 'file)
+  :type 'list)
 
 ;; This seems like poor emacs style
 (defvar  current-repository '"")
