@@ -16,9 +16,21 @@
 ;; If both are deleted, you'll need to rebuild the org file by hand (though forge can rebuild the database).
 
 ;;; Code:
+(defcustom forge-org-file-name
+  (expand-file-name "forge.org"  user-emacs-directory)
+  "The file forge-org writes forge topics to."
+  :package-version '(forge . "0.3.0")
+  :group 'forge-org
+  :type 'file)
 
-(defvar org-file-name)
-(setq org-file-name '"~/Dropbox/forge.org")
+(defcustom forge-org-issue-filters
+  (list
+   '"((issue.state != 'closed'))"
+   )
+  "A list of string filters to determine which issues to pull from the forge databse.  Issues that satisfy all filters will be returned.  This is passed raw to the forge-sqlite."
+  :package-version '(forge . "0.3.0")
+  :group 'forge-org
+  :type 'file)
 
 ;; This seems like poor emacs style
 (defvar  current-repository '"")
@@ -115,7 +127,7 @@
     (if (or (not (nth 0 sql-result)) (string= current-repository (nth 0 sql-result)))
 	nil
       (progn
-        (find-file org-file-name)
+        (find-file forge-org-file-name)
         (insert '"* ")
         (insert (nth 3 sql-result))
         (newline 1)
@@ -136,7 +148,7 @@
     (if (nth 4 sql-result) (setq current-milestone-name (nth 4 sql-result)) (setq current-milestone-name '"No Milestone"))
     (if (not (string= current-milestone current-milestone-name))
 	(progn
-	  (find-file org-file-name)
+	  (find-file forge-org-file-name)
 	  (insert '"** ")
 	  (insert current-milestone-name)
 	  (newline 1)
@@ -150,7 +162,7 @@
       )
 
     (progn
-      (find-file org-file-name)
+      (find-file forge-org-file-name)
       (insert '"*** ")
       (if (string= (nth 6 sql-result) '"open")
           (insert '"TODO ")
@@ -208,7 +220,7 @@
   (progn
     (setq current-repository nil)
     (setq current-milestone nil)
-    (find-file org-file-name)
+    (find-file forge-org-file-name)
     (erase-buffer)
     (insert '"# Issue tracking for use with forge")
     (newline 1)
@@ -309,10 +321,7 @@
 (defun diff-issue-list-with-database (filename)
   (progn
     (mapcar 'diff-and-update-issue (org-to-issue-list filename))
-    (sql-to-org (issue-forge-query (list
-				    '"assignee.login == '\"jkamins7\"'"
-				    "(NOT (issue.state == 'closed'))"
-				    )))
+    (sql-to-org (issue-forge-query forge-org-issue-filters ))
     )
   )
 
@@ -355,20 +364,17 @@
 )"
   ))
 
-;(defvar tmp3)
-;(setq tmp3 (test-sql-query (list '"repository.forge == '\"github.com\"'")))
-;(setq current-repository '"")
-;(setq current-milestone '"")
-;(defvar tmp)
 (defun forge-org-update
     ()
   (interactive)
   (progn
-    (forge-org-pull-all-forges)
-    (diff-issue-list-with-database org-file-name)
+    ; (forge-org-pull-all-forges)
+    (diff-issue-list-with-database forge-org-file-name)
     (save-buffer)))
 
-(defun forge-org-jump-to-forge () (interactive)
+(defun forge-org-jump-to-forge
+    ()
+  (interactive)
        (progn
 	 (setq tmp (concat '"^" (org-entry-get nil '"repository" t) '" "))
 	 (magit-list-repositories)
@@ -458,7 +464,7 @@
 (defun forge-org-reset-org ()
   "Delete the org file forge-org is using."
   (interactive)
-  (delete-file org-file-name)
+  (delete-file forge-org-file-name)
   )
 
 (forge-create-scheduling-table)
