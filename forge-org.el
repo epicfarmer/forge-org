@@ -16,6 +16,7 @@
 ;; If both are deleted, you'll need to rebuild the org file by hand (though forge can rebuild the database).
 
 ;;; Code:
+
 (defcustom forge-org-file-name
   (expand-file-name "forge.org"  user-emacs-directory)
   "The file forge-org writes forge topics to."
@@ -55,30 +56,9 @@
     )
   )
 
-(defun issue-forge-query (filters)
-  "Query the forge database for issues matching \"FILTERS\"."
-					;TODO deal with filters
-  ;; Output indices (for use with nth)
-					;  0 repository.id
-					;  1 repository.forge
-					;  2 repository.owner
-					;  3 repository.name
-					;  4 issue.milestone
-					;  5 issue.id
-					;  6 issue.state
-					;  7 issue.title
-					;  8 assignee.id
-					;  9 assignee.login
-					; 10 assignee.name
-					; 11 issue_schedule.id
-					; 12 issue_schedule.scheduled
-					; 13 issue_schedule.due
-					; 14 issue_schedule.clock
-					; 15 issue_schedule.priority
-  ;;(forge-sql '"SELECT * FROM (SELECT repository.id as rid,issue.milestone as imi,issue.id as iid,issue.state as ist,issue.title as iti,issue.labels as ila,repository.forge as rfo,repository.owner as row,repository.name as rna FROM issue LEFT JOIN repository ON issue.repository = repository.id) ORDER BY rid,imi")
-  (forge-sql
-   (concat
-    '"SELECT * FROM (SELECT
+(defun construct-forge-issue-query (filters)
+  (concat
+   '"SELECT * FROM (SELECT
        repository.id as rid,
        repository.forge as rfo,
        repository.owner as row,
@@ -105,18 +85,41 @@
          issue_schedule
          ON
          issue.id == issue_schedule.issue)"
-    (if filters
-	(concat
-	 '"WHERE ("
-	 (if (listp filters)
-	     (string-join filters '" AND ")
-	   filters)
-	 '")"
-	 )
-      nil)
-    ") ORDER BY rid, imi, iid, sid"
-    )
+   (if filters
+       (concat
+	'"WHERE ("
+	(if (listp filters)
+	    (string-join filters '" AND ")
+	  filters)
+	'")"
+	)
+     nil)
+   ") ORDER BY rid, imi, iid, sid"
    )
+  )
+
+(defun issue-forge-query (filters)
+  "Query the forge database for issues matching \"FILTERS\"."
+					;TODO deal with filters
+  ;; Output indices (for use with nth)
+					;  0 repository.id
+					;  1 repository.forge
+					;  2 repository.owner
+					;  3 repository.name
+					;  4 issue.milestone
+					;  5 issue.id
+					;  6 issue.state
+					;  7 issue.title
+					;  8 assignee.id
+					;  9 assignee.login
+					; 10 assignee.name
+					; 11 issue_schedule.id
+					; 12 issue_schedule.scheduled
+					; 13 issue_schedule.due
+					; 14 issue_schedule.clock
+					; 15 issue_schedule.priority
+  ;;(forge-sql '"SELECT * FROM (SELECT repository.id as rid,issue.milestone as imi,issue.id as iid,issue.state as ist,issue.title as iti,issue.labels as ila,repository.forge as rfo,repository.owner as row,repository.name as rna FROM issue LEFT JOIN repository ON issue.repository = repository.id) ORDER BY rid,imi")
+  (forge-sql (construct-forge-issue-query))
   )
 
 ;;;(forge-sql '"SELECT repository.id,repository.forge,repository.owner,repository.name,issue.milestone,issue.id,issue.state,issue.title,assignee.id,assignee.name FROM ((issue LEFT JOIN repository ON issue.repository == repository.id) LEFT JOIN (issue_assignee LEFT JOIN assignee ON issue_assignee.id == assignee.id) ON issue_assignee.issue == issue.id)")
@@ -470,4 +473,14 @@
 (forge-create-scheduling-table)
 
 (provide 'forge-org)
+;;; Tests
+
+(defvar run-my-tests nil)
+(eval-when-compile (setq run-my-tests t))
+
+(when run-my-tests
+  (assert (= 1 1))
+  )
+
+
 ;;; forge-org.el ends here
