@@ -26,7 +26,7 @@
 
 (defcustom forge-org-issue-filters
   (list
-   '"((issue.state != 'closed'))"
+   '"((issue.state != 'completed'))"
    )
   "A list of string filters to determine which issues to pull from the forge databse.  Issues that satisfy all filters will be returned.  This is passed raw to the forge-sqlite."
   :package-version '(forge . "0.3.0")
@@ -335,6 +335,10 @@
     )
   )
 
+(defun get-default-todo ()
+  (car (cdr (car org-todo-keywords)))
+  )
+
 (defun diff-and-update-issue (issue)
   (progn
     (if (and (nth 1 issue) (not (string= (nth 1 issue) '"")));Do we have a unique scheduling id
@@ -354,6 +358,22 @@
       (setq query (concat '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) VALUES('\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"')"))
       (forge-sql query)
       ;; (forge-sql (concat '"INSERT INTO issue_schedule (issue scheduled due) VALUES '\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"'"))
+      )
+    ;; (if (and (nth 6 issue) (not (string= (nth 6 issue) (get-default-todo))))
+    (if (nth 6 issue)
+	(progn
+	  (setq query (format '"SELECT state from issue where id = '\"%s\"'" (nth 0 issue)))
+	  (message (format '"Query is %s" query))
+	  (setq forge-state (nth 0 (nth 0 (forge-sql query))))
+	  (setq expected-forge-state
+		(if (string= (nth 6 issue) '"DONE") 'completed 'open)
+		)
+	  (if (not (string= forge-state expected-forge-state))
+	      (forge-org-edit-topic-state-by-id (nth 0 issue))
+	    )
+	  t
+	)
+      t
       )
     (setq tmp issue)
     )
@@ -378,7 +398,7 @@
     ()
   (interactive)
   (progn
-    (forge-org-pull-all-forges)
+    ;;(forge-org-pull-all-forges)
     (diff-issue-list-with-database forge-org-file-name)
     (save-buffer)))
 
@@ -433,7 +453,7 @@
 	 (title (org-entry-get nil '"ITEM"))
 	 (assignees (org-entry-get nil '"assignee"))
 	 (labels (org-entry-get nil '"label"))
-	 (state (if (equal (org-entry-get nil '"TODO") "TODO") 'open 'closed))
+	 (state (if (equal (org-entry-get nil '"TODO") "TODO") 'open 'completed ))
 	 )
     (if (null issue-id)
 	(forge-org-create-bug title '"" labels assignees state forge owner repo)
@@ -447,11 +467,24 @@
   (let* ((topic (forge-get-topic topic-id))
 	 (repo (forge-get-repository topic))
 	 )
-    (forge--ghub-patch topic
-      "/repos/:owner/:repo/issues/:number"
-      `((state . ,(cl-ecase (oref topic state)
-		    (closed "OPEN")
-		    (open   "CLOSED"))))
+    (progn
+
+      (forge--ghub-patch topic
+	"/repos/:owner/:repo/issues/:number"
+	`((state . ,(cl-ecase (oref topic state)
+		      (completed "OPEN")
+		      (open   "CLOSED"))))
+	)
+      (setq query (
+		   format
+		   '"UPDATE issue SET state = '%s' where id = '\"%s\"'"
+		   (cl-ecase (oref topic state)
+		      (completed 'open)
+		      (open   'completed))
+		   topic-id
+		   ))
+      (message (format '"Edit topic state query is %s" query))
+      (forge-sql query)
       )
     ))
 
