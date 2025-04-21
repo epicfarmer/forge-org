@@ -16,6 +16,7 @@
 ;; If both are deleted, you'll need to rebuild the org file by hand (though forge can rebuild the database).
 
 ;;; Code:
+
 (defcustom forge-org-file-name
   (expand-file-name "forge.org"  user-emacs-directory)
   "The file forge-org writes forge topics to."
@@ -55,30 +56,9 @@
     )
   )
 
-(defun issue-forge-query (filters)
-  "Query the forge database for issues matching \"FILTERS\"."
-					;TODO deal with filters
-  ;; Output indices (for use with nth)
-					;  0 repository.id
-					;  1 repository.forge
-					;  2 repository.owner
-					;  3 repository.name
-					;  4 issue.milestone
-					;  5 issue.id
-					;  6 issue.state
-					;  7 issue.title
-					;  8 assignee.id
-					;  9 assignee.login
-					; 10 assignee.name
-					; 11 issue_schedule.id
-					; 12 issue_schedule.scheduled
-					; 13 issue_schedule.due
-					; 14 issue_schedule.clock
-					; 15 issue_schedule.priority
-  ;;(forge-sql '"SELECT * FROM (SELECT repository.id as rid,issue.milestone as imi,issue.id as iid,issue.state as ist,issue.title as iti,issue.labels as ila,repository.forge as rfo,repository.owner as row,repository.name as rna FROM issue LEFT JOIN repository ON issue.repository = repository.id) ORDER BY rid,imi")
-  (forge-sql
-   (concat
-    '"SELECT * FROM (SELECT
+(defun construct-forge-issue-query (filters)
+  (concat
+   '"SELECT * FROM (SELECT
        repository.id as rid,
        repository.forge as rfo,
        repository.owner as row,
@@ -105,18 +85,41 @@
          issue_schedule
          ON
          issue.id == issue_schedule.issue)"
-    (if filters
-	(concat
-	 '"WHERE ("
-	 (if (listp filters)
-	     (string-join filters '" AND ")
-	   filters)
-	 '")"
-	 )
-      nil)
-    ") ORDER BY rid, imi, iid, sid"
-    )
+   (if filters
+       (concat
+	'"WHERE ("
+	(if (listp filters)
+	    (string-join filters '" AND ")
+	  filters)
+	'")"
+	)
+     nil)
+   ") ORDER BY rid, imi, iid, sid"
    )
+  )
+
+(defun issue-forge-query (filters)
+  "Query the forge database for issues matching \"FILTERS\"."
+					;TODO deal with filters
+  ;; Output indices (for use with nth)
+					;  0 repository.id
+					;  1 repository.forge
+					;  2 repository.owner
+					;  3 repository.name
+					;  4 issue.milestone
+					;  5 issue.id
+					;  6 issue.state
+					;  7 issue.title
+					;  8 assignee.id
+					;  9 assignee.login
+					; 10 assignee.name
+					; 11 issue_schedule.id
+					; 12 issue_schedule.scheduled
+					; 13 issue_schedule.due
+					; 14 issue_schedule.clock
+					; 15 issue_schedule.priority
+  ;;(forge-sql '"SELECT * FROM (SELECT repository.id as rid,issue.milestone as imi,issue.id as iid,issue.state as ist,issue.title as iti,issue.labels as ila,repository.forge as rfo,repository.owner as row,repository.name as rna FROM issue LEFT JOIN repository ON issue.repository = repository.id) ORDER BY rid,imi")
+  (forge-sql (construct-forge-issue-query filters))
   )
 
 ;;;(forge-sql '"SELECT repository.id,repository.forge,repository.owner,repository.name,issue.milestone,issue.id,issue.state,issue.title,assignee.id,assignee.name FROM ((issue LEFT JOIN repository ON issue.repository == repository.id) LEFT JOIN (issue_assignee LEFT JOIN assignee ON issue_assignee.id == assignee.id) ON issue_assignee.issue == issue.id)")
@@ -168,6 +171,7 @@
           (insert '"TODO ")
 	(insert '"DONE ")
 	)
+      (message (nth 15 sql-result))
       (if (not (string= (nth 15 sql-result) '""))
           (insert (concat '"[#" (nth 15 sql-result) "] "))
 	)
@@ -176,18 +180,18 @@
       (if (and (nth 12 sql-result) (not (string= (nth 12 sql-result) '"")))
 	  (progn
 	    (insert "    SCHEDULED:")
-	    (insert '" <")
+	    (insert '" ")
 	    (insert (nth 12 sql-result))
-	    (insert '"> ")
+	    (insert '" ")
 	    )
 	nil
 	)
       (if (and (nth 13 sql-result) (not (string= (nth 13 sql-result) '"")))
 	  (progn
 	    (insert "    DEADLINE:")
-	    (insert '" <")
+	    (insert '" ")
 	    (insert (nth 13 sql-result))
-	    (insert '"> ")
+	    (insert '" ")
 	    )
 	nil
 	)
@@ -195,13 +199,6 @@
 	   (and (nth 12 sql-result) (not (string= (nth 12 sql-result) '"")))
 	   (and (nth 13 sql-result) (not (string= (nth 13 sql-result) '""))))
 	  (newline 1))
-      (if (and (nth 14 sql-result) (not (string= (nth 14 sql-result) '"")))
-	  (progn
-	    (insert (nth 14 sql-result))
-	    (newline 1)
-	    )
-	nil
-	)
       (insert '"    :PROPERTIES:")
       (newline 1)
       (write-property '"issue-id" (nth 5 sql-result) '"    ")
@@ -211,6 +208,17 @@
       (write-property '"schedule-id" (nth 11 sql-result) '"    ")
       (insert '"    :END:")
       (newline 1)
+      (if (and (nth 14 sql-result) (not (string= (nth 14 sql-result) '"")))
+	  (progn
+            (insert '"    :LOGBOOK:")
+	    (newline 1)
+	    (insert (nth 14 sql-result))
+	    (newline 1)
+            (insert '"    :END:")
+	    (newline 1)
+	    )
+	nil
+	)
       )
     )
   )
@@ -302,13 +310,15 @@
 	(setq issue-max issue-min)
 	(setq issue-min (point))
 	(let*
-	    ((this-id (search-within-issue issue-min issue-max '":issue-id: \\(.*\\)$"))
-	     (this-schedule-id (search-within-issue issue-min issue-max '":schedule-id: \\(.*\\)$" ));Get it's iD
-	     (this-schedule (search-within-issue issue-min issue-max '"SCHEDULED: <\\([^>]*\\)>" ));Get it's id
-	     (this-deadline (search-within-issue issue-min issue-max '"DEADLINE: <\\([^>]*\\)>" ));Get it's id
-	     (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ));Get it's id
-	     (this-priority (search-within-issue issue-min issue-max '"^[*]* [TOD][OPO][DEN][ONE] \\[#\\(.*\\)\\]" ));Get it's priority
-	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority))); Construct issue
+	    
+	    ((this-id (org-entry-get nil '"issue-id"))
+	     (this-schedule-id (org-entry-get nil '"schedule-id"))
+	     (this-schedule (org-entry-get nil '"SCHEDULED"))
+	     (this-deadline (org-entry-get nil '"DEADLINE"))
+	     (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ))
+	     (this-priority (org-entry-get nil '"PRIORITY"))
+	     (this-status (org-entry-get nil '"TODO"))
+	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority this-status))); Construct issue
 	  ;; Create issue
 	  (setq issues-list (cons this-issue issues-list))
 	  (goto-char issue-min)
@@ -321,7 +331,7 @@
 (defun diff-issue-list-with-database (filename)
   (progn
     (mapcar 'diff-and-update-issue (org-to-issue-list filename))
-    (sql-to-org (issue-forge-query forge-org-issue-filters ))
+    (sql-to-org (issue-forge-query forge-org-issue-filters))
     )
   )
 
@@ -368,7 +378,7 @@
     ()
   (interactive)
   (progn
-    ; (forge-org-pull-all-forges)
+    (forge-org-pull-all-forges)
     (diff-issue-list-with-database forge-org-file-name)
     (save-buffer)))
 
@@ -470,4 +480,13 @@
 (forge-create-scheduling-table)
 
 (provide 'forge-org)
+;;; Tests
+
+(defvar run-my-tests nil)
+(eval-when-compile (setq run-my-tests t))
+
+;(when run-my-tests
+;  (assert (= 1 1))
+;  )
+
 ;;; forge-org.el ends here
