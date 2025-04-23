@@ -4,7 +4,7 @@
 ;; Maintainer: jkamins7 <jkaminsky at jhu dot edu>
 ;; Created: 2021-03-24
 ;; Keywords: org, synchronization, issue tracking, forge
-;; Homepage: https://github.com/jkamins7/todolist
+;; Homepage: https://github.com/epicfarmer/forge-org
 ;; Package-Requires: ((cl-lib "0.5") (org "8.2") (emacs "24") (forge "0.1"))
 ;; Version: 0.3.0
 ;; This file is not part of gnu emacs
@@ -34,27 +34,9 @@
   :type 'list)
 
 ;; This seems like poor emacs style
-(defvar  current-repository '"")
+(defvar current-repository '"")
 (defvar current-milestone '"")
 (defvar current-milestone-name '"")
-
-(defun write-property (name value indentation)
-  "Write an \"org-mode\" property for a list item at indent level \"INDENTATION\" called \"NAME\" with value \"VALUE\"."
-  (if value
-      (progn
-	(insert indentation)
-	(insert (concat '":" name '": "))
-	(if (stringp value)
-	    (insert value)
-	  (if (numberp value)
-	      (insert (number-to-string value))
-	    (if (and (listp value) (length value))
-		(insert (string-join value '" "))
-	      nil)))
-	(newline 1)
-	)
-    )
-  )
 
 (defun construct-forge-issue-query (filters)
   (concat
@@ -118,108 +100,115 @@
 					; 13 issue_schedule.due
 					; 14 issue_schedule.clock
 					; 15 issue_schedule.priority
-  ;;(forge-sql '"SELECT * FROM (SELECT repository.id as rid,issue.milestone as imi,issue.id as iid,issue.state as ist,issue.title as iti,issue.labels as ila,repository.forge as rfo,repository.owner as row,repository.name as rna FROM issue LEFT JOIN repository ON issue.repository = repository.id) ORDER BY rid,imi")
   (forge-sql (construct-forge-issue-query filters))
   )
 
-;;;(forge-sql '"SELECT repository.id,repository.forge,repository.owner,repository.name,issue.milestone,issue.id,issue.state,issue.title,assignee.id,assignee.name FROM ((issue LEFT JOIN repository ON issue.repository == repository.id) LEFT JOIN (issue_assignee LEFT JOIN assignee ON issue_assignee.id == assignee.id) ON issue_assignee.issue == issue.id)")
+(defun repository-to-org (sql-result)
+  "Convert the repository information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
+  (let* (
+	 (repository (nth 0 sql-result))
+	 (repository-name (if (nth 3 sql-result) (nth 3 sql-result) '"No Repository"))
+	 (owner (nth 2 sql-result))
+	 (forge (nth 1 sql-result))
+	 )
+    ;; Skip if current repository has already been added.
+    (if (or (not repository) (string= current-repository repository))
+      current-repository
+      (progn
+	;; Insert heading
+	(find-file forge-org-file-name)
+	(org-insert-heading nil nil 1)
+	(insert repository-name)
+	(newline 1)
+	;; Add properties
+	(org-entry-put nil '"repository-id" repository)
+	(org-entry-put nil '"repository" repository-name)
+	(org-entry-put nil '"owner" owner)
+	(org-entry-put nil '"forge" forge)
+	;; Return repository
+	(setq current-repository repository)
+	(setq current-milestone nil)
+	repository
+	)
+      )
+    )
+  )
+
+(defun milestone-to-org (sql-result)
+  "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
+  (let* (
+	 (milestone (if (nth 4 sql-result) (nth 4 sql-result) '"No Milestone"))
+	 )
+    (if (and current-milestone (string= current-milestone milestone))
+	current-milestone
+      (progn
+	;; Insert heading
+	(find-file forge-org-file-name)
+	(org-insert-heading nil nil 2)
+	(insert milestone)
+	(newline 1)
+	;; Return milestone
+	(setq current-milestone milestone)
+	milestone
+	)
+      )
+    )
+  )
 
 (defun issue-to-org (sql-result)
-  "Convert an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
-  (progn
-    (if (or (not (nth 0 sql-result)) (string= current-repository (nth 0 sql-result)))
-	nil
-      (progn
-        (find-file forge-org-file-name)
-        (insert '"* ")
-        (insert (nth 3 sql-result))
-        (newline 1)
-        (insert '"  :PROPERTIES:")
-        (newline 1)
-	(write-property '"repository-id" (nth 0 sql-result) '"  ")
-	(write-property '"repository" (nth 3 sql-result) '"  ")
-	(write-property '"owner" (nth 2 sql-result) '"  ")
-	(write-property '"forge" (nth 1 sql-result) '"  ")
-        (insert '"  :END:")
-        (newline 1)
-        (setq current-repository (nth 0 sql-result))
-	(setq current-milestone '"")
-        't
-	)
-      )
-
-    (if (nth 4 sql-result) (setq current-milestone-name (nth 4 sql-result)) (setq current-milestone-name '"No Milestone"))
-    (if (not (string= current-milestone current-milestone-name))
-	(progn
-	  (find-file forge-org-file-name)
-	  (insert '"** ")
-	  (insert current-milestone-name)
-	  (newline 1)
-	  (insert '"   :PROPERTIES:")
-	  (newline 1)
-	  (insert '"   :END:")
-	  (newline 1)
-	  (setq current-milestone current-milestone-name)
-	  't
-	  )
-      )
-
+  "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
+  (let* (
+	 (status (nth 6 sql-result))
+	 (priority (nth 15 sql-result))
+	 (title (nth 7 sql-result))
+	 (scheduled (nth 12 sql-result))
+	 (deadline (nth 13 sql-result))
+	 (issue-id (nth 5 sql-result))
+	 (assignee (nth 9 sql-result))
+	 (assignee-name (nth 10 sql-result))
+	 (assignee-id (nth 8 sql-result))
+	 (schedule-id (nth 11 sql-result))
+	 (logbook-result (nth 14 sql-result))
+	 )
     (progn
       (find-file forge-org-file-name)
-      (insert '"*** ")
-      (if (string= (nth 6 sql-result) '"open")
-          (insert '"TODO ")
-	(insert '"DONE ")
-	)
-      (message (nth 15 sql-result))
-      (if (not (string= (nth 15 sql-result) '""))
-          (insert (concat '"[#" (nth 15 sql-result) "] "))
-	)
-      (insert (nth 7 sql-result))
+      (org-insert-heading nil nil 3)
+      (insert title)
       (newline 1)
-      (if (and (nth 12 sql-result) (not (string= (nth 12 sql-result) '"")))
-	  (progn
-	    (insert "    SCHEDULED:")
-	    (insert '" ")
-	    (insert (nth 12 sql-result))
-	    (insert '" ")
-	    )
-	nil
-	)
-      (if (and (nth 13 sql-result) (not (string= (nth 13 sql-result) '"")))
-	  (progn
-	    (insert "    DEADLINE:")
-	    (insert '" ")
-	    (insert (nth 13 sql-result))
-	    (insert '" ")
-	    )
-	nil
-	)
-      (if (or
-	   (and (nth 12 sql-result) (not (string= (nth 12 sql-result) '"")))
-	   (and (nth 13 sql-result) (not (string= (nth 13 sql-result) '""))))
-	  (newline 1))
-      (insert '"    :PROPERTIES:")
-      (newline 1)
-      (write-property '"issue-id" (nth 5 sql-result) '"    ")
-      (write-property '"assignee" (nth 9 sql-result) '"    ")
-      (write-property '"assignee-name" (nth 10 sql-result) '"    ")
-      (write-property '"assignee-id" (nth 8 sql-result) '"    ")
-      (write-property '"schedule-id" (nth 11 sql-result) '"    ")
-      (insert '"    :END:")
-      (newline 1)
-      (if (and (nth 14 sql-result) (not (string= (nth 14 sql-result) '"")))
-	  (progn
-            (insert '"    :LOGBOOK:")
-	    (newline 1)
-	    (insert (nth 14 sql-result))
-	    (newline 1)
-            (insert '"    :END:")
-	    (newline 1)
-	    )
-	nil
-	)
+      (org-entry-put nil '"TODO" (if (string= status '"open") '"TODO" '"DONE"))
+      (org-entry-put nil '"PRIORITY" priority)
+
+      (if (not (string= scheduled '"")) (org-entry-put nil '"SCHEDULED" scheduled))
+      (if (not (string= deadline '"")) (org-entry-put nil '"DEADLINE" deadline))
+      (if issue-id (org-entry-put nil '"issue-id" issue-id))
+      (if assignee (org-entry-put nil '"assignee" assignee)) ;; Switch to multivalued property
+      (if assignee-id (org-entry-put nil '"assignee-id" assignee-id)) ;; Switch to multivalued property
+      (if schedule-id (org-entry-put nil '"schedule-id" (format '"%d" schedule-id)))
+      (if (not (string= logbook-result '"")) (insert-logbook-entry logbook-result))
       )
+    )
+  )
+
+(defun insert-logbook-entry (entry)
+  "Insert a :LOGBOOK: entry at cursor position.  ENTRY is the contents of the logbook."
+  (progn
+    (insert '":LOGBOOK:")
+    (newline 1)
+    (insert entry)
+    (newline 1)
+    (insert '":END:")
+    (newline 1)
+    t
+    )
+  )
+    
+
+(defun sql-result-to-org (sql-result)
+  "Convert an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
+  (progn
+    (repository-to-org sql-result)
+    (milestone-to-org sql-result)
+    (issue-to-org sql-result)
     )
   )
 
@@ -238,7 +227,7 @@
     (newline 1)
     (insert '"#+PRIORITIES: A E C")
     (newline 1)
-    (mapc 'issue-to-org sql-results)
+    (mapc 'sql-result-to-org sql-results)
     )
   )
 
@@ -340,42 +329,67 @@
   )
 
 (defun diff-and-update-issue (issue)
-  (progn
-    (if (and (nth 1 issue) (not (string= (nth 1 issue) '"")));Do we have a unique scheduling id
-	;; We do
-	;(forge-sql (concat '"UPDATE issue_schedule SET due = '\"" (nth 2 issue) '"\"', scheduled = '\"" (nth 3 issue) '"\"' WHERE id == " (nth 1 issue)))
+  (let* (
+	 (issue-id (nth 0 issue))
+	 (schedule-id (nth 1 issue))
+	 (scheduled (nth 2 issue))
+	 (due (nth 3 issue))
+	 (clock (nth 4 issue))
+	 (priority (nth 5 issue))
+	 (status (nth 6 issue))
+	 )
+    (if (not issue-id)
 	(progn
-	  (setq query (
-		       concat
-		       '"UPDATE issue_schedule SET due = '\"" (nth 3 issue)
-		       '"\"', scheduled = '\"" (nth 2 issue)
-		       '"\"' , clock= '\"" (nth 4 issue)
-		       '"\"' , priority= '\"" (nth 5 issue)
-		       '"\"' WHERE id == " (nth 1 issue)))
-	  (forge-sql query)
+	  (message '"Issue creation is not yet integrated. Please create the issue for this entry manually")
+	  (message issue)
 	  )
-      ;; We do not
-      (setq query (concat '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) VALUES('\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"')"))
-      (forge-sql query)
-      ;; (forge-sql (concat '"INSERT INTO issue_schedule (issue scheduled due) VALUES '\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"'"))
-      )
-    ;; (if (and (nth 6 issue) (not (string= (nth 6 issue) (get-default-todo))))
-    (if (nth 6 issue)
-	(progn
-	  (setq query (format '"SELECT state from issue where id = '\"%s\"'" (nth 0 issue)))
-	  (message (format '"Query is %s" query))
-	  (setq forge-state (nth 0 (nth 0 (forge-sql query))))
-	  (setq expected-forge-state
-		(if (string= (nth 6 issue) '"DONE") 'completed 'open)
+      (progn
+	;; If we don't have a schedule id, create the entry
+	(if (or (not schedule-id) (string= schedule-id '""))
+	    (let*
+		(
+		 (query (concat
+			 '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) "
+			 '"VALUES('\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"')"))
+		 )
+	      (progn
+		(forge-sql query)
 		)
-	  (if (not (string= forge-state expected-forge-state))
-	      (forge-org-edit-topic-state-by-id (nth 0 issue))
-	    )
-	  t
+	      )
+	  )
+	;; If we have (or created) a schedule id, update the parameters
+	(if (and schedule-id (not (string= schedule-id '"")))
+	    (let*
+		((query (
+			 concat
+			 '"UPDATE issue_schedule SET due = '\"" (nth 3 issue)
+			 '"\"', scheduled = '\"" (nth 2 issue)
+			 '"\"' , clock= '\"" (nth 4 issue)
+			 '"\"' , priority= '\"" (nth 5 issue)
+			 '"\"' WHERE id == " (nth 1 issue))
+			))
+	      (progn
+		(forge-sql query)
+		)
+	      )
+	  )
+	(if (and status (not (string= status '"")))
+	    (let*
+		(
+		 (query (format '"SELECT state from issue where id = '\"%s\"'" (nth 0 issue)))
+		 (forge-state (nth 0 (nth 0 (forge-sql query))))
+		 (expected-forge-state (if (string= status '"DONE") 'completed 'open))
+		 )
+	      (if (not (string= forge-state expected-forge-state))
+		  (progn 
+		    (message (format '"Changing issue %s state for issue from %s to %s" issue-id forge-state status))
+		    ;;    (forge-org-edit-topic-state-by-id issue-id)
+		    )
+		)
+	      )
+	  )
 	)
-      t
       )
-    (setq tmp issue)
     )
   )
 
@@ -483,7 +497,6 @@
 		      (open   'completed))
 		   topic-id
 		   ))
-      (message (format '"Edit topic state query is %s" query))
       (forge-sql query)
       )
     ))
