@@ -15,6 +15,10 @@
 ;; The database and the org mode file both contain the same information.  If either is deleted, it should be obtainable from the other.
 ;; If both are deleted, you'll need to rebuild the org file by hand (though forge can rebuild the database).
 
+(require 'forge)
+(require 'org)
+(require 'forge-schedule)
+
 ;;; Code:
 
 (defcustom forge-org-file-name
@@ -80,6 +84,27 @@
    )
   )
 
+(defun query-row-to-issue (query-row)
+  (make-instance 'forge-org-issue
+		 :repository-id   (nth  0 query-row)
+		 :forge           (nth  1 query-row)
+		 :owner           (nth  2 query-row)
+		 :repository-name (nth  3 query-row)
+		 :milestone       (nth  4 query-row)
+		 :id              (nth  5 query-row)
+		 :state           (nth  6 query-row)
+		 :title           (nth  7 query-row)
+		 :assignee-id     (nth  8 query-row)
+		 :assignee-login  (nth  9 query-row)
+		 :assignee-name   (nth 10 query-row)
+		 :schedule-id     (nth 11 query-row)
+		 :scheduled       (nth 12 query-row)
+		 :due             (nth 13 query-row)
+		 :logbook         (nth 14 query-row)
+		 :priority        (nth 15 query-row)
+		 )
+  )
+
 (defun issue-forge-query (filters)
   "Query the forge database for issues matching \"FILTERS\"."
 					;TODO deal with filters
@@ -100,16 +125,20 @@
 					; 13 issue_schedule.due
 					; 14 issue_schedule.clock
 					; 15 issue_schedule.priority
-  (forge-sql (construct-forge-issue-query filters))
+  (let* ((query-results (forge-sql (construct-forge-issue-query filters)))
+	 (query-issues (mapcar 'query-row-to-issue query-results))
+	 )
+    query-issues
+    )
   )
 
-(defun repository-to-org (sql-result)
+(defun issue-to-repository-org (issue)
   "Convert the repository information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
   (let* (
-	 (repository (nth 0 sql-result))
-	 (repository-name (if (nth 3 sql-result) (nth 3 sql-result) '"No Repository"))
-	 (owner (nth 2 sql-result))
-	 (forge (nth 1 sql-result))
+	 (repository (oref issue :repository-id))
+	 (repository-name (if (oref issue :repository-name) (oref issue :repository-name) '"No Repository"))
+	 (owner (oref issue :owner))
+	 (forge (oref issue :forge))
 	 )
     ;; Skip if current repository has already been added.
     (if (or (not repository) (string= current-repository repository))
@@ -134,10 +163,11 @@
     )
   )
 
-(defun milestone-to-org (sql-result)
+(defun issue-to-milestone-org (issue)
   "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
   (let* (
-	 (milestone (if (nth 4 sql-result) (nth 4 sql-result) '"No Milestone"))
+	 (raw-milestone (oref issue :milestone))
+	 (milestone (if raw-milestone raw-milestone '"No Milestone"))
 	 )
     (if (and current-milestone (string= current-milestone milestone))
 	current-milestone
@@ -155,20 +185,20 @@
     )
   )
 
-(defun issue-to-org (sql-result)
+(defun issue-to-issue-org (issue)
   "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
   (let* (
-	 (status (nth 6 sql-result))
-	 (priority (nth 15 sql-result))
-	 (title (nth 7 sql-result))
-	 (scheduled (nth 12 sql-result))
-	 (deadline (nth 13 sql-result))
-	 (issue-id (nth 5 sql-result))
-	 (assignee (nth 9 sql-result))
-	 (assignee-name (nth 10 sql-result))
-	 (assignee-id (nth 8 sql-result))
-	 (schedule-id (nth 11 sql-result))
-	 (logbook-result (nth 14 sql-result))
+	 (status (oref issue :state))
+	 (priority (oref issue :priority))
+	 (title (oref issue :title))
+	 (scheduled (oref issue :scheduled))
+	 (deadline (oref issue :due))
+	 (issue-id (oref issue :id))
+	 (assignee (oref issue :assignee-login))
+	 (assignee-name (oref issue :assignee-name))
+	 (assignee-id (oref issue :assignee-id))
+	 (schedule-id (oref issue :schedule-id))
+	 (logbook-result (oref issue :logbook))
 	 )
     (progn
       (find-file forge-org-file-name)
@@ -206,9 +236,10 @@
 (defun sql-result-to-org (sql-result)
   "Convert an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
   (progn
-    (repository-to-org sql-result)
-    (milestone-to-org sql-result)
-    (issue-to-org sql-result)
+    (message (prin1-to-string sql-result))
+    (issue-to-repository-org sql-result)
+    (issue-to-milestone-org sql-result)
+    (issue-to-issue-org sql-result)
     )
   )
 
@@ -268,14 +299,16 @@
 
 (defun search-within-issue (issue-min issue-max regex)
   "Search for text within the body of an \"org-mode\" issue.  Start at ISSUE-MIN, go to ISSUE-MAX, find the first thing matching REGEX.  There is nothing about this function that is particular to issues."
-  (let* ((rc '""))
-    (progn
-      (goto-char issue-min)
-      (setq rc '"")
-      (while (re-search-forward regex issue-max t);Get it's id
-	(setq rc (concat rc (if (not (string= rc '"")) '"\n" '"") (match-string 1)))
-	nil)
-      rc))
+  (if (> issue-min issue-max)
+      nil
+    (let* ((rc '""))
+      (progn
+	(goto-char issue-min)
+	(setq rc '"")
+	(while (re-search-forward regex issue-max t);Get it's id
+	  (setq rc (concat rc (if (not (string= rc '"")) '"\n" '"") (match-string 1)))
+	  nil)
+	rc)))
   )
 
 (defun org-to-issue-list (filename)
@@ -299,6 +332,7 @@
 	(setq issue-max issue-min)
 	(setq issue-min (point))
 	(let*
+
 	    
 	    ((this-id (org-entry-get nil '"issue-id"))
 	     (this-schedule-id (org-entry-get nil '"schedule-id"))
@@ -307,11 +341,13 @@
 	     (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ))
 	     (this-priority (org-entry-get nil '"PRIORITY"))
 	     (this-status (org-entry-get nil '"TODO"))
-	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority this-status))); Construct issue
+	     (this-title (org-entry-get nil '"ITEM"))
+	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority this-status this-title))); Construct issue
 	  ;; Create issue
 	  (setq issues-list (cons this-issue issues-list))
-	  (goto-char issue-min)
-	  )))
+	  )
+	(goto-char issue-min)
+	))
     (save-buffer)
     (kill-buffer)
     issues-list))
@@ -319,7 +355,7 @@
 
 (defun diff-issue-list-with-database (filename)
   (progn
-    (mapcar 'diff-and-update-issue (org-to-issue-list filename))
+    (mapc 'diff-and-update-issue (org-to-issue-list filename))
     (sql-to-org (issue-forge-query forge-org-issue-filters))
     )
   )
@@ -337,11 +373,12 @@
 	 (clock (nth 4 issue))
 	 (priority (nth 5 issue))
 	 (status (nth 6 issue))
+	 (issue-title (nth 7 issue))
 	 )
     (if (not issue-id)
 	(progn
 	  (message '"Issue creation is not yet integrated. Please create the issue for this entry manually")
-	  (message issue)
+	  (message issue-id)
 	  )
       (progn
 	;; If we don't have a schedule id, create the entry
@@ -419,17 +456,23 @@
 (defun forge-org-jump-to-forge
     ()
   (interactive)
-       (progn
-	 (setq tmp (concat '"^" (org-entry-get nil '"repository" t) '" "))
-	 (magit-list-repositories)
-	 (switch-to-buffer (other-buffer (current-buffer) t))
-	 (goto-char (point-min))
-	 (re-search-forward tmp (point-max) t)    ;Find next issue
-	 (magit-repolist-status)
-	 (switch-to-buffer (other-buffer (current-buffer) t))
-	 (kill-buffer)
-	 )
-       )
+  (let*
+      ((repository-name (org-entry-get nil '"repository" t)))
+    (progn
+      (magit-list-repositories)
+      (switch-to-buffer (other-buffer (current-buffer) t))
+      (goto-char (point-min))
+      (
+       re-search-forward
+       (concat '"^" repository-name '" ")
+       (point-max)
+       t)    ;Find next issue
+      (magit-repolist-status)
+      (switch-to-buffer (other-buffer (current-buffer) t))
+      (kill-buffer)
+      )
+    )
+  )
 
 (defun forge-org-get-all-repositories-in-database ()
   (mapcar (lambda (repo) (forge-get-repository repo)) (forge-sql "select distinct forge,owner,name from repository")))
@@ -489,15 +532,17 @@
 		      (completed "OPEN")
 		      (open   "CLOSED"))))
 	)
-      (setq query (
+      (let*
+	  ((query (
 		   format
 		   '"UPDATE issue SET state = '%s' where id = '\"%s\"'"
 		   (cl-ecase (oref topic state)
 		      (completed 'open)
 		      (open   'completed))
 		   topic-id
-		   ))
-      (forge-sql query)
+		   )))
+	(forge-sql query)
+	)
       )
     ))
 
