@@ -37,6 +37,19 @@
   :group 'forge-org
   :type 'list)
 
+(defcustom forge-org-preamble
+  (string-join '(
+		"# Issue tracking for use with forge"
+		"#+BEGIN: clocktable :maxlevel 4 :scope file"
+		"#+END:"
+		"#+PRIORITIES: A E C"
+		) '"\n"
+		  )
+  "The preamble to put at the top of the forge org output file."
+  :package-version '(forge . "0.3.0")
+  :group 'forge-org
+  :type 'string)
+
 (defvar forge-org-query-path
   (file-name-concat (file-name-directory (or load-file-name (buffer-file-name))) '"forge-query.sql")
   )
@@ -81,32 +94,13 @@
   )
 
 (defun issue-forge-query (filters)
-  "Query the forge database for issues matching \"FILTERS\"."
-					;TODO deal with filters
-  ;; Output indices (for use with nth)
-					;  0 repository.id
-					;  1 repository.forge
-					;  2 repository.owner
-					;  3 repository.name
-					;  4 issue.milestone
-					;  5 issue.id
-					;  6 issue.state
-					;  7 issue.title
-					;  8 assignee.id
-					;  9 assignee.login
-					; 10 assignee.name
-					; 11 issue_schedule.id
-					; 12 issue_schedule.scheduled
-					; 13 issue_schedule.due
-					; 14 issue_schedule.clock
-					; 15 issue_schedule.priority
+  "Query the forge database for issues matching \"FILTERS\". Return is a forge-org-issue"
   (let* ((query-results (forge-sql (construct-forge-issue-query filters)))
 	 (query-issues (mapcar 'query-row-to-issue query-results))
 	 )
     query-issues
     )
   )
-
 
 (defun insert-logbook-entry (entry)
   "Insert a :LOGBOOK: entry at cursor position.  ENTRY is the contents of the logbook."
@@ -122,68 +116,27 @@
   )
     
 
-(defun sql-result-to-org (sql-result)
-  "Convert an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
+(defun issue-to-org (issue)
+  "Convert an issue in the form of an sql result into org mode text.  \"ISSUE\" is the sql result to convert."
   (progn
-    (message (prin1-to-string sql-result))
-    (forge-org-get-repository-org sql-result)
-    (forge-org-get-milestone-org sql-result)
-    (forge-org-get-issue-org sql-result)
+    (message (prin1-to-string issue))
+    (forge-org-get-repository-org issue)
+    (forge-org-get-milestone-org issue)
+    (forge-org-get-issue-org issue)
     )
   )
 
-(defun sql-to-org (sql-results)
-  "Convert an entire sql query into org mode text.  \"SQL-RESULTS\" is the sql result to convert."
+(defun issue-list-to-org (issue-list)
+  "Convert an entire issue list query into org mode text.  \"ISSUE-LIST\" is the issue list result to convert."
   (progn
     (setq current-repository nil)
     (setq current-milestone nil)
     (find-file forge-org-file-name)
     (erase-buffer)
-    (insert '"# Issue tracking for use with forge")
+    (insert forge-org-preamble)
     (newline 1)
-    (insert '"#+BEGIN: clocktable :maxlevel 4 :scope file")
-    (newline 1)
-    (insert '"#+END:")
-    (newline 1)
-    (insert '"#+PRIORITIES: A E C")
-    (newline 1)
-    (mapc 'sql-result-to-org sql-results)
+    (mapc 'issue-to-org issue-list)
     )
-  )
-
-(defun test-sql-query (filters)
-  "This is a test of the sql query used to get issues and their scheduling (as filtered by FILTERS)."
-  (concat
-
-   '"SELECT
-       repository.id,
-       repository.forge,
-       repository.owner,
-       repository.name,
-       issue.milestone,
-       issue.id,
-       issue.state,
-       issue.title,
-       assignee.id,
-       assignee.login,
-       assignee.name
-     FROM
-       ((issue LEFT JOIN repository ON issue.repository == repository.id)
-         LEFT JOIN
-        (issue_assignee LEFT JOIN assignee ON issue_assignee.id == assignee.id)
-         ON
-        issue_assignee.issue == issue.id
-       )"
-   (if filters
-       (concat
-	'"WHERE ("
-	(if (listp filters)
-	    (string-join filters '" AND ")
-	  filters)
-	'")"
-	)
-     nil)
-   )
   )
 
 (defun search-within-issue (issue-min issue-max regex)
@@ -204,48 +157,28 @@
   "Read through an org file FILENAME, and create a list of issues."
   (let* ((issues-list (list))
 	 (issue-min (point-max))
-	 (issue-max (point-max))
-	 (this-id)
-	 (this-schedule-id)
-	 (this-schedule)
-	 (this-deadline)
-	 (this-clock)
-	 (this-priority)
-	 (this-issue))
-  (progn
-    (find-file filename)
-    (goto-char (point-max))
-    (while (re-search-backward '"^[*][*][*] " (point-min) t)    ;Find next issue
-      (progn
-	;; Set bounds for issue
-	(setq issue-max issue-min)
-	(setq issue-min (point))
-	(let*
-
-	    
-	    ((this-id (org-entry-get nil '"issue-id"))
-	     (this-schedule-id (org-entry-get nil '"schedule-id"))
-	     (this-schedule (org-entry-get nil '"SCHEDULED"))
-	     (this-deadline (org-entry-get nil '"DEADLINE"))
-	     (this-clock (search-within-issue issue-min issue-max '"^\\( *CLOCK: .*\\)$" ))
-	     (this-priority (org-entry-get nil '"PRIORITY"))
-	     (this-status (org-entry-get nil '"TODO"))
-	     (this-title (org-entry-get nil '"ITEM"))
-	     (this-issue (list this-id this-schedule-id this-schedule this-deadline this-clock this-priority this-status this-title))); Construct issue
-	  ;; Create issue
-	  (setq issues-list (cons this-issue issues-list))
-	  )
-	(goto-char issue-min)
-	))
-    (save-buffer)
-    (kill-buffer)
-    issues-list))
+	 (issue-max (point-max)))
+    (progn
+      (find-file filename)
+      (goto-char (point-max))
+      (while (re-search-backward '"^[*][*][*] " (point-min) t)    ;Find next issue
+	(progn
+	  ;; Set bounds for issue
+	  (setq issue-max issue-min)
+	  (setq issue-min (point))
+	  (setq issues-list (cons (forge-org-org-to-issue filename issue-min issue-max) issues-list))
+	  (print issues-list)
+	  (goto-char issue-min)
+	  ))
+      (save-buffer)
+      (kill-buffer)
+      issues-list))
   )
 
 (defun diff-issue-list-with-database (filename)
   (progn
     (mapc 'diff-and-update-issue (org-to-issue-list filename))
-    (sql-to-org (issue-forge-query forge-org-issue-filters))
+    (issue-list-to-org (issue-forge-query forge-org-issue-filters))
     )
   )
 
@@ -254,66 +187,50 @@
   )
 
 (defun diff-and-update-issue (issue)
-  (let* (
-	 (issue-id (nth 0 issue))
-	 (schedule-id (nth 1 issue))
-	 (scheduled (nth 2 issue))
-	 (due (nth 3 issue))
-	 (clock (nth 4 issue))
-	 (priority (nth 5 issue))
-	 (status (nth 6 issue))
-	 (issue-title (nth 7 issue))
-	 )
-    (if (not issue-id)
-	(progn
-	  (message '"Issue creation is not yet integrated. Please create the issue for this entry manually")
-	  (message issue-id)
-	  )
-      (progn
-	;; If we don't have a schedule id, create the entry
-	(if (or (not schedule-id) (string= schedule-id '""))
-	    (let*
-		(
-		 (query (concat
+  (if (not (oref issue :id))
+      ;; If no issue exists, create one.
+      (message (format '"Issue creation is not yet integrated. Please create the issue %s for this entry manually." (prin1-to-string issue)))
+    (progn
+      ;; If we don't have a schedule id, create a scheduling table entry
+      (if (or (not (oref issue :schedule-id)) (string= (oref issue :schedule-id) '""))
+	  (let* ((query (concat
 			 '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) "
-			 '"VALUES('\"" (string-join (cons (car issue) (cdr (cdr issue))) "\"', '\"") "\"')"))
+			 '"VALUES('\"" (string-join (list
+						     (oref issue :id)
+						     (oref issue :scheduled)
+						     (oref issue :due)
+						     (oref issue :logbook)
+						     (oref issue :priority))
+						    "\"', '\"")
+			 "\"')"))
 		 )
-	      (progn
-		(forge-sql query)
-		)
-	      )
+	    (forge-sql query)
+	    )
+	)
+      (if (or (not (oref issue :schedule-id)) (string= (oref issue :schedule-id) '""))
+	  (message (format '"Failed to create scheduling table for issue %s." (prin1-to-string issue)))
+	(let*
+	    ((query (concat
+		     '"UPDATE issue_schedule SET due = '\"" (oref issue :due)
+		     '"\"', scheduled = '\"" (oref issue :scheduled)
+		     '"\"' , clock= '\"" (oref issue :logbook)
+		     '"\"' , priority= '\"" (oref issue :priority)
+		     '"\"' WHERE id == '\"" (oref issue :id) "\"'"
+		    )))
+	  (forge-sql query)
 	  )
-	;; If we have (or created) a schedule id, update the parameters
-	(if (and schedule-id (not (string= schedule-id '"")))
-	    (let*
-		((query (
-			 concat
-			 '"UPDATE issue_schedule SET due = '\"" (nth 3 issue)
-			 '"\"', scheduled = '\"" (nth 2 issue)
-			 '"\"' , clock= '\"" (nth 4 issue)
-			 '"\"' , priority= '\"" (nth 5 issue)
-			 '"\"' WHERE id == " (nth 1 issue))
-			))
-	      (progn
-		(forge-sql query)
-		)
-	      )
-	  )
-	(if (and status (not (string= status '"")))
-	    (let*
-		(
-		 (query (format '"SELECT state from issue where id = '\"%s\"'" (nth 0 issue)))
+	)
+      (if (and (oref issue :state) (not (string= (oref issue :state) '"")))
+	  (let* ((query (format '"SELECT state from issue where id = '\"%s\"'" (oref issue :id)))
 		 (forge-state (nth 0 (nth 0 (forge-sql query))))
-		 (expected-forge-state (if (string= status '"DONE") 'completed 'open))
-		 )
-	      (if (not (string= forge-state expected-forge-state))
-		  (progn 
-		    (message (format '"Changing issue %s state for issue from %s to %s" issue-id forge-state status))
-		    ;;    (forge-org-edit-topic-state-by-id issue-id)
-		    )
-		)
+		 (expected-forge-state (if (string= (oref issue :state) '"DONE") 'completed 'open)))
+	    (if (not (string= forge-state expected-forge-state))
+		(progn
+		  (message (format '"Changing state for issue %s from %s to %s" (oref issue :id) forge-state (oref issue :state)))
+		  ;;    (forge-org-edit-topic-state-by-id issue-id)
+		  )
 	      )
-	  )
+	    )
 	)
       )
     )
