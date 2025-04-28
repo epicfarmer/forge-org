@@ -67,7 +67,6 @@
 	 (sql-query-raw (with-temp-buffer (insert-file-contents forge-org-query-path) (buffer-string)))
 	 (sql-query (format sql-query-raw filter-sql-string))
 	 )
-    (message filter-sql-string)
     sql-query
     )
   )
@@ -85,7 +84,7 @@
 		 :assignee-id     (nth  8 query-row)
 		 :assignee-login  (nth  9 query-row)
 		 :assignee-name   (nth 10 query-row)
-		 :schedule-id     (nth 11 query-row)
+		 :schedule-id     (if (nth 11 query-row) (format '"%d" (nth 11 query-row)) (nth 11 query-row))
 		 :scheduled       (nth 12 query-row)
 		 :due             (nth 13 query-row)
 		 :logbook         (nth 14 query-row)
@@ -119,7 +118,6 @@
 (defun issue-to-org (issue)
   "Convert an issue in the form of an sql result into org mode text.  \"ISSUE\" is the sql result to convert."
   (progn
-    (message (prin1-to-string issue))
     (forge-org-get-repository-org issue)
     (forge-org-get-milestone-org issue)
     (forge-org-get-issue-org issue)
@@ -190,46 +188,46 @@
   (if (not (oref issue :id))
       ;; If no issue exists, create one.
       (message (format '"Issue creation is not yet integrated. Please create the issue %s for this entry manually." (prin1-to-string issue)))
-    (progn
+    (let*
+	((other-issue (nth 0 (issue-forge-query (format '"issue.id == '\"%s\"'" (oref issue :id)))))
+	 (issue-diff (forge-org-diff-issues issue other-issue))
+	 )
       ;; If we don't have a schedule id, create a scheduling table entry
-      (if (or (not (oref issue :schedule-id)) (string= (oref issue :schedule-id) '""))
-	  (let* ((query (concat
-			 '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) "
-			 '"VALUES('\"" (string-join (list
-						     (oref issue :id)
-						     (oref issue :scheduled)
-						     (oref issue :due)
-						     (oref issue :logbook)
-						     (oref issue :priority))
-						    "\"', '\"")
-			 "\"')"))
-		 )
-	    (forge-sql query)
+      (if (or
+	   (oref issue-diff :scheduled)
+	   (oref issue-diff :due)
+	   (oref issue-diff :logbook)
+	   (oref issue-diff :priority))
+	  (if (not (oref issue :schedule-id))
+	      (let* ((query (concat
+			     '"INSERT INTO issue_schedule(issue,scheduled,due,clock,priority) "
+			     '"VALUES('\"" (string-join (list
+							 (oref issue :id)
+							 (oref issue :scheduled)
+							 (oref issue :due)
+							 (oref issue :logbook)
+							 (oref issue :priority))
+							"\"', '\"")
+			     "\"')"))
+		     )
+		(forge-sql query)
+		)
+	    (let*
+		((query (concat
+			 '"UPDATE issue_schedule SET due = '\"" (oref issue :due)
+			 '"\"', scheduled = '\"" (oref issue :scheduled)
+			 '"\"' , clock= '\"" (oref issue :logbook)
+			 '"\"' , priority= '\"" (oref issue :priority)
+			 '"\"' WHERE id == " (oref issue :schedule-id)
+			 )))
+	      (forge-sql query)
+	      )
 	    )
 	)
-      (if (or (not (oref issue :schedule-id)) (string= (oref issue :schedule-id) '""))
-	  (message (format '"Failed to create scheduling table for issue %s." (prin1-to-string issue)))
-	(let*
-	    ((query (concat
-		     '"UPDATE issue_schedule SET due = '\"" (oref issue :due)
-		     '"\"', scheduled = '\"" (oref issue :scheduled)
-		     '"\"' , clock= '\"" (oref issue :logbook)
-		     '"\"' , priority= '\"" (oref issue :priority)
-		     '"\"' WHERE id == '\"" (oref issue :id) "\"'"
-		    )))
-	  (forge-sql query)
-	  )
-	)
-      (if (and (oref issue :state) (not (string= (oref issue :state) '"")))
-	  (let* ((query (format '"SELECT state from issue where id = '\"%s\"'" (oref issue :id)))
-		 (forge-state (nth 0 (nth 0 (forge-sql query))))
-		 (expected-forge-state (if (string= (oref issue :state) '"DONE") 'completed 'open)))
-	    (if (not (string= forge-state expected-forge-state))
-		(progn
-		  (message (format '"Changing state for issue %s from %s to %s" (oref issue :id) forge-state (oref issue :state)))
-		  ;;    (forge-org-edit-topic-state-by-id issue-id)
-		  )
-	      )
+      (if (oref issue-diff :state)
+	  (progn
+	    (message (format '"Changing state for issue %s from %s to %s" (oref issue :id) (oref other-issue :state) (oref issue :state)))
+	    ;;    (forge-org-edit-topic-state-by-id issue-id)
 	    )
 	)
       )
