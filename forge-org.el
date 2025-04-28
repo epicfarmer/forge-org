@@ -1,11 +1,11 @@
 ;;; forge-org.el --- Create org file for integrating scheduling with issues managed with forge.
 
-;; Author: jkamins7 <jkaminsky at jhu dot edu>
-;; Maintainer: jkamins7 <jkaminsky at jhu dot edu>
+;; Author: epicfarmer <magicgathering2001 at gmail dot com>
+;; Maintainer: epicfarmer <magicgathering2001 at gmail dot com>
 ;; Created: 2021-03-24
 ;; Keywords: org, synchronization, issue tracking, forge
 ;; Homepage: https://github.com/epicfarmer/forge-org
-;; Package-Requires: ((cl-lib "0.5") (org "8.2") (emacs "24") (forge "0.1"))
+;; Package-Requires: ((cl-lib "0.5") (org "8.2") (emacs "28") (forge "0.5"))
 ;; Version: 0.3.0
 ;; This file is not part of gnu emacs
 
@@ -37,51 +37,26 @@
   :group 'forge-org
   :type 'list)
 
-;; This seems like poor emacs style
+(defvar forge-org-query-path
+  (file-name-concat (file-name-directory (or load-file-name (buffer-file-name))) '"forge-query.sql")
+  )
+
+;; This seems like poor elisp style
 (defvar current-repository '"")
 (defvar current-milestone '"")
 (defvar current-milestone-name '"")
 
 (defun construct-forge-issue-query (filters)
-  (concat
-   '"SELECT * FROM (SELECT
-       repository.id as rid,
-       repository.forge as rfo,
-       repository.owner as row,
-       repository.name as rna,
-       issue.milestone as imi,
-       issue.id as iid,
-       issue.state as ist,
-       issue.title as iti,
-       assignee.id as aid,
-       assignee.login as alo,
-       assignee.name as ana,
-       issue_schedule.id as sid,
-       issue_schedule.scheduled as ssc,
-       issue_schedule.due as sdu,
-       issue_schedule.clock as scl,
-       issue_schedule.priority as spr
-     FROM
-       (((issue LEFT JOIN repository ON issue.repository == repository.id)
-         LEFT JOIN
-        (issue_assignee LEFT JOIN assignee ON issue_assignee.id == assignee.id)
-         ON
-        issue_assignee.issue == issue.id
-       ) LEFT JOIN
-         issue_schedule
-         ON
-         issue.id == issue_schedule.issue)"
-   (if filters
-       (concat
-	'"WHERE ("
-	(if (listp filters)
-	    (string-join filters '" AND ")
-	  filters)
-	'")"
-	)
-     nil)
-   ") ORDER BY rid, imi, iid, sid"
-   )
+  "Get a query to find appropriate issues from the forge database where appropriate is determined by FILTERS."
+  (let* (
+	 (non-nil-filters (if filters filters '"TRUE"))
+	 (filter-sql-string (if (listp non-nil-filters) (string-join non-nil-filters '"AND") non-nil-filters))
+	 (sql-query-raw (with-temp-buffer (insert-file-contents forge-org-query-path) (buffer-string)))
+	 (sql-query (format sql-query-raw filter-sql-string))
+	 )
+    (message filter-sql-string)
+    sql-query
+    )
   )
 
 (defun query-row-to-issue (query-row)
@@ -132,92 +107,6 @@
     )
   )
 
-(defun issue-to-repository-org (issue)
-  "Convert the repository information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
-  (let* (
-	 (repository (oref issue :repository-id))
-	 (repository-name (if (oref issue :repository-name) (oref issue :repository-name) '"No Repository"))
-	 (owner (oref issue :owner))
-	 (forge (oref issue :forge))
-	 )
-    ;; Skip if current repository has already been added.
-    (if (or (not repository) (string= current-repository repository))
-      current-repository
-      (progn
-	;; Insert heading
-	(find-file forge-org-file-name)
-	(org-insert-heading nil nil 1)
-	(insert repository-name)
-	(newline 1)
-	;; Add properties
-	(org-entry-put nil '"repository-id" repository)
-	(org-entry-put nil '"repository" repository-name)
-	(org-entry-put nil '"owner" owner)
-	(org-entry-put nil '"forge" forge)
-	;; Return repository
-	(setq current-repository repository)
-	(setq current-milestone nil)
-	repository
-	)
-      )
-    )
-  )
-
-(defun issue-to-milestone-org (issue)
-  "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
-  (let* (
-	 (raw-milestone (oref issue :milestone))
-	 (milestone (if raw-milestone raw-milestone '"No Milestone"))
-	 )
-    (if (and current-milestone (string= current-milestone milestone))
-	current-milestone
-      (progn
-	;; Insert heading
-	(find-file forge-org-file-name)
-	(org-insert-heading nil nil 2)
-	(insert milestone)
-	(newline 1)
-	;; Return milestone
-	(setq current-milestone milestone)
-	milestone
-	)
-      )
-    )
-  )
-
-(defun issue-to-issue-org (issue)
-  "Convert the milestone information of an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
-  (let* (
-	 (status (oref issue :state))
-	 (priority (oref issue :priority))
-	 (title (oref issue :title))
-	 (scheduled (oref issue :scheduled))
-	 (deadline (oref issue :due))
-	 (issue-id (oref issue :id))
-	 (assignee (oref issue :assignee-login))
-	 (assignee-name (oref issue :assignee-name))
-	 (assignee-id (oref issue :assignee-id))
-	 (schedule-id (oref issue :schedule-id))
-	 (logbook-result (oref issue :logbook))
-	 )
-    (progn
-      (find-file forge-org-file-name)
-      (org-insert-heading nil nil 3)
-      (insert title)
-      (newline 1)
-      (org-entry-put nil '"TODO" (if (string= status '"open") '"TODO" '"DONE"))
-      (org-entry-put nil '"PRIORITY" priority)
-
-      (if (not (string= scheduled '"")) (org-entry-put nil '"SCHEDULED" scheduled))
-      (if (not (string= deadline '"")) (org-entry-put nil '"DEADLINE" deadline))
-      (if issue-id (org-entry-put nil '"issue-id" issue-id))
-      (if assignee (org-entry-put nil '"assignee" assignee)) ;; Switch to multivalued property
-      (if assignee-id (org-entry-put nil '"assignee-id" assignee-id)) ;; Switch to multivalued property
-      (if schedule-id (org-entry-put nil '"schedule-id" (format '"%d" schedule-id)))
-      (if (not (string= logbook-result '"")) (insert-logbook-entry logbook-result))
-      )
-    )
-  )
 
 (defun insert-logbook-entry (entry)
   "Insert a :LOGBOOK: entry at cursor position.  ENTRY is the contents of the logbook."
@@ -237,9 +126,9 @@
   "Convert an issue in the form of an sql result into org mode text.  \"SQL-RESULT\" is the sql result to convert."
   (progn
     (message (prin1-to-string sql-result))
-    (issue-to-repository-org sql-result)
-    (issue-to-milestone-org sql-result)
-    (issue-to-issue-org sql-result)
+    (forge-org-get-repository-org sql-result)
+    (forge-org-get-milestone-org sql-result)
+    (forge-org-get-issue-org sql-result)
     )
   )
 
